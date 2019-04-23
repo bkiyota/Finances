@@ -1,0 +1,526 @@
+---
+title: '2019: Financial report'
+author: "Brett Kiyota"
+date: '2019-03-04'
+output:
+  html_document:
+    df_print: paged
+    fig_caption: yes
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# - Overview
+
+This report will provide a financial summary of transactions made by myself with the starting date being 01^st^ March 2019. This Rproject is set up in a way that any modifications saved to the corresponding excel sheet will incorporated into the subsequent Knit of the RMarkdown report. It will include both income (i.e. occupational, family subsidization, etc) and expenditures, with the money spent stratefied into intuitive categories. All cash sums are in terms of Canadian dollars.
+
+* Current exchange rate (as of 04 March 2019): 1 USD $\rightarrow$ 1.33 CAD
+
+```{r message = F, echo = F}
+library(tidyverse)
+library(lubridate)
+library(oce)
+library(gsw)
+library(readxl)
+library(ggrepel)
+
+budget_data <- read_excel("budget_data.xlsx")
+
+spending <- budget_data %>%
+  select(Date, Cost, Category, Details, Occasion, Service) %>%
+  separate(Date, into = c("Year", "Month", "Day"), sep = "-") %>%
+  mutate(Month = gsub("01", "January", Month),
+         Month = gsub("02", "February", Month),
+         Month = gsub("03", "March", Month), 
+         Month = gsub("04", "April", Month),
+         Month = gsub("05", "May", Month),
+         Month = gsub("06", "June", Month),
+         Month = gsub("07", "July", Month),
+         Month = gsub("08", "August", Month),
+         Month = gsub("09", "September", Month),
+         Month = gsub("10", "October", Month),
+         Month = gsub("11", "November", Month),
+         Month = gsub("12", "December", Month)) 
+  
+spending$Month <- factor(spending$Month, ordered = T, 
+                         levels = c("January", "February", "March", "April",
+                                    "May", "June", "July", "August",
+                                    "September", "October", "November", "December"))
+
+glimpse(budget_data)
+```
+
+This table provides a glimpse of the overall structure of the budget datasheet. 
+
+# - Annual spending
+
+This section presents the absolute sum of expenditures grouped into various categories. It's main purpose is to provide a sense regarding the distribution of money and what kinds of things are having more resources allocated than others. There isn't necessarily a baseline on what to expect given the constant changes in life, and as a result it is shown aesthetically as a polar barplot. 
+
+```{r warning = F, echo = F, fig.cap = "Figure 1: Polar barplot of annual spending with transaction-based categorization. \\label{fig:iris}", fig.width=10, fig.height=10}
+spending_barplot <- spending %>%
+  group_by(Year, Category) %>% 
+  summarize(Cost = sum(Cost)) %>%
+  arrange(Category, Cost) %>%
+  ungroup %>%
+  mutate(id = row_number(), 
+         angle = 90 - 360 * (id - 0.5) / id,
+         hjust = ifelse(angle < -90, 1, 0),
+         angle = angle < -90, angle + 180, angle) %>%
+  filter(!is.na(Category))
+
+ggplot(spending_barplot, aes(x = factor(Category), y = Cost, 
+                             label = Category, group = Category)) +
+  geom_bar(aes(fill = Category), stat = "identity", 
+           position = "dodge", alpha = 0.5) +
+  scale_fill_manual(values = c("#1B9E77", "#D95F02", "#7570B3", 
+                               "#E7298A", "#66A61E", "#E6AB02", 
+                               "#A6761D", "#666666", "steelblue", 
+                               "darkred", "darkgrey", "lightgreen"), guide = F) +
+  coord_polar(start = 0) +
+  expand_limits(y = -200) +
+  geom_text(data = spending_barplot, aes(x = Category, y = 1200, label = Category, angle = angle),
+            family = "Century Gothic", hjust = 0.5, inherit.aes = F, size = 5, colour = "black") +
+  theme_minimal() +
+  ggtitle("2019") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+        strip.text.x = element_text(size = 14, face = "bold", family = "Century Gothic"),
+        text = element_text(size = 14, family = "Century Gothic"),
+        axis.title = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title = element_text(face = "bold"))
+```
+
+Breakdown of the categorization:
+
+* Rent: regular payments to a landlord for the use of property.
+* Personal: includes things bought to take care of myself, and includes purchases of things like haircuts, toiletries, repair of goods, etc.
+* Leisure: activities away from studies or work for which there is a corresponding fee. This also includes video games.
+* Groceries: any purchase of food at a market or store for general substinence reasons.
+* Eating out: includes both food delivery and physically going somewhere to eat. Also includes smaller purchases such as coffee.
+* Shopping: spending on material objects that are non-essential (objectively-speaking).
+* Supplies: general housekeeping purchases.
+* Health care: MSP payments and other medical-related spending.
+* Telecommunications: regular internet payments, phone payments, etc.
+* Miscellaneous: random fees (e.g. FedEx charges) and spending that don't conform to any other categories. 
+* Liquor: any alcoholic beverages purchased at a liquor store. I'm not including social occations like going out to the pub (that will be in leisure). 
+* Career: any academic, occupational fees (e.g. UBC fees). 
+
+# - Monthly spending
+
+This section will breakdown spending by a monthly basis, which helps to get a sense of spending in a particular category in relation to the time of the year. 
+
+``` {r warning = F, echo = F, message = F, fig.cap = "Figure 2: Monthly line plots faceted by category. \\label{fig:iris}", fig.height = 10}
+spending_lineplot <- spending %>%
+  group_by(Month, Category) %>% 
+  summarize(Cost = sum(Cost)) %>%
+  arrange(Category, Cost) %>%
+  ungroup() %>%
+  dplyr::select(-NA) %>%
+  filter(!is.na(Category)) 
+
+ggplot(spending_lineplot, aes(x = Month, y = Cost, group = Category, colour = Category)) +
+  geom_point(size = 3, alpha = 0.5) +
+  geom_line(size = 0.25, alpha = 0.75) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5, size = 16),
+        strip.text = element_text(size = 14, family = "Century Gothic", colour = "white"),
+        text = element_text(size = 14, family = "Century Gothic"),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(colour = "#bdbdbd", linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = alpha("aquamarine4", 0.75))) +
+    scale_colour_manual(values = c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E",
+                               "#E6AB02", "#A6761D", "#666666", "steelblue", "darkred", "darkgrey", "lightgreen"), guide = F) +
+  labs(y = "Cost (CAD)") +
+  facet_wrap(~ Category, scales = "free", ncol = 3)
+```
+
+# - By the numbers
+
+This section will be more focused an a select few items that I have a tendency to spend lots on. It will act as a way to keep track of the "little expenses" to see how they build over time, and help me get an understanding of how much I can spend on these things while still being comfortable financially.
+
+## - Coffee 
+
+Coffee from cafes, campus, etc. I'm giving some leeway since it can be a necessity at times. But it's not worth if I can just make it at home.
+
+``` {r echo = F}
+spending %>%
+  filter(Details == "Coffee") %>%
+  group_by(Month) %>%
+  summarize(count = n(),
+            Total = sum(Cost),
+            Average = Total / count)
+```
+
+## - Food delivery
+
+Services such as Uber Eats and DoorDash. The total cost including the fees and tips are not worth the convenience. 
+
+
+``` {r echo = F}
+delivery_details <- spending %>%
+  filter(Occasion == "Food delivery") %>%
+  group_by(Year, Month, Service) %>%
+  summarize(count = n(),
+            Total = sum(Cost),
+            Average = Total / count)
+
+delivery_details
+
+delivery_details %>%
+  group_by(Year, Month) %>%
+  summarize(Total = sum(Total))
+```
+
+## - Amazon
+
+This section may be misleading because some of the purchases will be towards supplies and essentials (personal), so just keep note that not all these transactions are purely our of shopping reasons.  
+
+``` {r echo = F}
+spending %>%
+  filter(Service == "Amazon") %>%
+  group_by(Year, Month, Category) %>%
+  summarize(count = n(),
+            Total = sum(Cost),
+            Average = Total / count)
+```
+
+## - Cumulative spending
+
+Tracking total spending over time. 
+
+``` {r echo = F}
+spending %>%
+  group_by(Year, Month) %>%
+  filter(!is.na(Cost)) %>%
+  summarize(Total = sum(Cost),
+            `Running total` = sum(Total)) %>%
+  dplyr::filter(!is.na(Month))
+```
+
+``` {r echo = F, warning = F, fig.cap = "Figure 3: Cumulative spending on a transaction basis. \\label{fig:iris}"}
+
+cumulative <- spending %>%
+  filter(!is.na(Cost)) %>%
+  group_by(Day, Year, Month) %>%
+  summarize(Spent = sum(Cost)) %>% 
+  unite(Date, Day, Month, Year, sep = "-") %>%
+  ungroup() %>%
+  mutate(Date = dmy(Date)) %>%
+  arrange(Date)
+
+ggplot(cumulative, aes(x = Date, y=cumsum(Spent), group = 1)) + 
+  geom_point(size = 3, alpha = 0.75, colour = "aquamarine4") +
+  geom_line(size = 0.25, alpha = 0.5) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        plot.title = element_text(hjust = 0.5, size = 16),
+        text = element_text(size = 14, family = "Century Gothic"),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(colour = "#bdbdbd", linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = alpha("aquamarine4", 0.75))) +
+  labs(y = "Total $ spent (CAD)", title = "Cumulative spending")
+```
+
+## - Tendencies
+
+``` {r warning = F, echo = F, fig.cap = "Figure 4: Average spending on a daily basis. \\label{fig:iris}", fig.width=15, fig.height=7}
+cumulative_omit_rent <- spending %>%
+  filter(!is.na(Cost)) %>%
+  filter(Category != "Rent") %>%
+  group_by(Day, Year, Month) %>%
+  summarize(Spent = sum(Cost)) %>% 
+  unite(Date, Day, Month, Year, sep = "-") %>%
+  ungroup() %>%
+  mutate(Date = dmy(Date)) %>%
+  arrange(Date)
+
+Date_seq <- data.frame(Date = seq(as.Date("2019/3/1"), to = as.Date(Sys.Date()), by = "day"))
+
+cumulative_joined <- cumulative_omit_rent %>%
+  full_join(Date_seq, by = "Date") %>%
+  arrange(Date) 
+
+cumulative_joined$Spent[is.na(cumulative_joined$Spent)] <- 0
+cumulative_joined$Spent <- as.numeric(format(round(cumulative_joined$Spent, 2), nsmall = 2))
+cumulative_joined_melt <- cumulative_joined %>%
+  mutate(Mean = mean(Spent),
+         Upper_sd = Mean + sd(Spent),
+         Lower_sd = Mean - sd(Spent),
+         Median = median(Spent)) %>%
+  gather(key = "Statistics", value = "Value", -Date) 
+
+d_ends <- subset(cumulative_joined_melt, Statistics != "Spent") %>% 
+  group_by(Statistics) %>% 
+  top_n(1, Date) %>% 
+  pull(Value)
+
+d_ends <- round(d_ends, digits = 2)
+
+ggplot(subset(cumulative_joined_melt, Statistics %in% "Spent"), aes(x = Date, y = Value)) +
+  geom_segment(aes(y = 0, 
+                   x = Date, 
+                   yend = Value,
+                   xend = Date),
+               colour = "seagreen",
+               alpha = 0.15) + 
+  geom_point(aes(y = Value), alpha = 0.5, colour = "seagreen", size = 4) +
+  geom_text_repel(aes(label = Value), vjust = -2, point.padding = NA,
+                  colour = "grey50", size = 2.5) +
+  geom_line(data = subset(cumulative_joined_melt, Statistics != "Spent"), aes(x = Date, y = Value, 
+                                               group = Statistics, linetype = Statistics), alpha = 0.5, colour = "wheat4") +
+  scale_linetype_manual(values = c("solid", "dotdash",
+                                   "dashed", "solid"), label = c("Upper standard\ndeviation","Mean",
+                                                                 "Median", "Lower standard\ndeviation"),
+                        name = "Group statistics") +
+  scale_y_continuous(sec.axis = sec_axis(~ ., breaks = d_ends)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        plot.title = element_text(hjust = 0.5, size = 16),
+        text = element_text(size = 14, family = "Century Gothic"),
+        axis.text.y.right = element_text(colour = "wheat4"),
+        axis.ticks.y.right = element_line(colour = "wheat4"),
+        legend.title = element_text(colour = "wheat4"),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = alpha("aquamarine4", 0.75))) +
+  labs(y = "Daily expenditure (CAD)", title = "Average spending per day")
+```
+
+
+### - Heatmaps
+
+This section is more for fun than the utility it can provide. It may be neat to get a sense of the days of the month that I'm spending most (in terms of absolute cost and frequency) to see if there are underlying patters. Note that all rent payments are excluded from this section. 
+
+
+``` {r echo = F, fig.cap = "Figure 5: Heatmap of spending tendencies by way of frequency of transactions per day. \\label{fig:iris}"}
+heat <- spending %>%
+  filter(!is.na(Cost)) %>%
+  filter(Category != "Rent") %>%
+  mutate(Day = as.numeric(Day)) %>%
+  group_by(Day, Year, Month) %>%
+  summarize(count = n(),
+            Spent = sum(Cost)) 
+Days_per_month <- data.frame(Day = 1:31)
+heat2 <- full_join(Days_per_month, heat, by = "Day") %>%
+  mutate(count = ifelse(is.na(count), 0, count),
+         Spent = ifelse(is.na(Spent), 0, Spent)) 
+
+ggplot(heat2, aes(x = Month, y = Day), colour = "aquamarine4", alpha = 0.85) +
+  geom_tile(aes(y = Day, fill = rescale(count, rlow = 0, rhigh = 1)), alpha = 0.5) +
+  scale_fill_gradient(low = "white", high = "aquamarine4", name = "Scaled\nproportion") +
+  scale_y_continuous(limits = c(0, 32), breaks = seq(1, 31, 1)) +
+  theme_bw() + 
+  labs(x = "", y = "Day of the month", title = "Transactions per day") + 
+  theme(axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 16, colour = "black"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 14, family = "Century Gothic", colour = "grey50"),
+        axis.text = element_text(colour = "grey50", size = 9),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+
+``` {r echo = F, fig.cap = "Figure 6: Heatmap of expenditure on a given day. \\label{fig:iris}"}
+ggplot(heat2, aes(x = Month, y = Day), colour = "aquamarine4", alpha = 0.85) +
+  geom_tile(aes(y = Day, fill = rescale(Spent, rlow = 0, rhigh = 1)), alpha = 0.5) +
+  scale_fill_gradient(low = "white", high = "aquamarine4", name = "Scaled\nproportion") +
+  scale_y_continuous(limits = c(0, 32), breaks = seq(1, 31, 1)) +
+  theme_bw() + 
+  labs(x = "", y = "Day of the month", title = "Expenditure per day by proportion") + 
+  theme(axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 16, colour = "black"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 14, family = "Century Gothic", colour = "grey50"),
+        axis.text = element_text(colour = "grey50", size = 9),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+# - Income 
+
+Hopefully this section will be less sad in the future. 
+
+``` {r echo = F, message = F, warning = F, fig.cap = "Figure 7: Canadian dollars made on a monthly basis. \\label{fig:iris}"}
+monthly_income <- budget_data %>%
+  select(Date, `Wages/earnings`, Description, Account, `Income (CAD)`) %>%
+  separate(Date, into = c("Year", "Month", "Day"), sep = "-") %>%
+    mutate(Month = gsub("01", "January", Month),
+           Month = gsub("02", "February", Month),
+           Month = gsub("03", "March", Month), 
+           Month = gsub("04", "April", Month),
+           Month = gsub("05", "May", Month),
+           Month = gsub("06", "June", Month),
+           Month = gsub("07", "July", Month),
+           Month = gsub("08", "August", Month),
+           Month = gsub("09", "September", Month),
+           Month = gsub("10", "October", Month),
+           Month = gsub("11", "November", Month),
+           Month = gsub("12", "December", Month)) %>%
+  group_by(Year, Month) %>% 
+  filter(!is.na(`Income (CAD)`)) %>%
+  summarize(income = sum(`Income (CAD)`)) %>%
+  filter(!is.na(Month))
+
+monthly_income$Month <- factor(monthly_income$Month, ordered = T, 
+                         levels = c("January", "February", "March", "April",
+                                    "May", "June", "July", "August",
+                                    "September", "October", "November", "December"))
+
+ggplot(monthly_income, aes(x = Month, y = income, group = 1)) +
+  geom_point(size = 3, alpha = 0.75, colour = "aquamarine4") +
+  geom_line(size = 0.25, alpha = 0.5) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5, size = 16),
+        text = element_text(size = 14, family = "Century Gothic"),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(colour = "#bdbdbd", linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = alpha("aquamarine4", 0.75))) +
+  labs(y = "Income (CAD)", title = "Monthly income")
+```
+  
+## - Wages
+
+This is to better track the money earned through working. 
+
+``` {r echo = F} 
+income_raw <- budget_data %>%
+  select(Date, `Wages/earnings`, Description, Account, `Income (CAD)`) %>%
+  separate(Date, into = c("Year", "Month", "Day"), sep = "-") %>%
+  mutate(Month = gsub("01", "January", Month),
+         Month = gsub("02", "February", Month),
+         Month = gsub("03", "March", Month), 
+         Month = gsub("04", "April", Month),
+         Month = gsub("05", "May", Month),
+         Month = gsub("06", "June", Month),
+         Month = gsub("07", "July", Month),
+         Month = gsub("08", "August", Month),
+         Month = gsub("09", "September", Month),
+         Month = gsub("10", "October", Month),
+         Month = gsub("11", "November", Month),
+         Month = gsub("12", "December", Month)) 
+
+income_raw$Month <- factor(income_raw$Month, ordered = T, 
+                         levels = c("January", "February", "March", "April",
+                                    "May", "June", "July", "August",
+                                    "September", "October", "November", "December"))
+income <- income_raw %>%
+  group_by(Year, Month, Description) %>% 
+  summarize(income = sum(`Income (CAD)`)) %>%
+  filter(!is.na(income))
+
+income %>%
+  filter(Description == "Cannevert") %>%
+  mutate(`Income (CAD)` = as.numeric(gsub("\\$", "", income))) %>%
+  ungroup() %>%
+  group_by(Year, Month, Description) %>%
+  summarize(count = n(),
+            Income = sum(income))
+```
+
+## - Subsidization 
+
+Many of the funds in this sub-section will be given to be purely for existing in this world. Thank you to all family; make sure to always be thankful for these generous donations. 
+
+``` {r echo = F}
+income %>%
+  filter(Description == "Mom" | Description == "Dad" | Description == "Grandma Jere" |
+           Description == "Grandma Chris + Grandpa Mike") %>%
+  ungroup() %>%
+  group_by(Year, Month, Description) %>%
+  summarize(count = n(),
+            Income = sum(income))
+```
+
+# - Net 
+
+Again, hopfully it will be less sad one day and the major trends will reverse, but this figure provides an understanding of both spending and income in a single plot. It may be useful to quantify the statistics in some way, shape, or form. 
+
+``` {r echo = F, warning = F, fig.cap = "Figure 8: Net funds spent on a daily basis. \\label{fig:iris}"}
+income_expenditure <- budget_data %>%
+  dplyr::select(Date, `Income (CAD)`, Cost) %>%
+  separate(Date, into = c("Year", "Month", "Day"), sep = "-") %>%
+  mutate(Month = gsub("01", "January", Month),
+         Month = gsub("02", "February", Month),
+         Month = gsub("03", "March", Month), 
+         Month = gsub("04", "April", Month),
+         Month = gsub("05", "May", Month),
+         Month = gsub("06", "June", Month),
+         Month = gsub("07", "July", Month),
+         Month = gsub("08", "August", Month),
+         Month = gsub("09", "September", Month),
+         Month = gsub("10", "October", Month),
+         Month = gsub("11", "November", Month),
+         Month = gsub("12", "December", Month)) %>%
+  rename(Income = `Income (CAD)`) %>%
+  filter(!is.na(Day)) %>%
+  mutate(Cost = Cost / -1) %>%
+  group_by(Year, Month, Day) %>%
+  gather(key = "Source", value = "Net", -Year, -Month, -Day) %>%
+  ungroup() %>%
+  group_by(Year, Month, Day, Source) %>%
+  dplyr::filter(!is.na(Net)) %>%
+  summarize(Net = sum(Net))
+
+income_expenditure$Day <- as.numeric(income_expenditure$Day)
+
+income_expenditure$Month <- factor(income_expenditure$Month, ordered = T, 
+                         levels = c("January", "February", "March", "April",
+                                    "May", "June", "July", "August",
+                                    "September", "October", "November", "December"))
+
+ggplot(income_expenditure, aes(x = 1:length(Day), y = Net)) +
+  geom_bar(aes(x = Day, fill = Source), stat = "identity", alpha = 0.5) +
+  scale_fill_manual(values = c("orangered4", "steelblue"), labels = c("Costs", "Gains")) +
+  facet_wrap(~ Month) +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    text = element_text(size = 14, family = "Century Gothic"),
+    strip.text = element_text(size = 14, family = "Century Gothic", colour = "white"),
+    panel.background = element_blank(),
+    panel.grid.major = element_line(colour = "#bdbdbd", linetype = "dotted"),
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = alpha("aquamarine4", 0.75))) +
+  labs(y = "Net funds", x = "Day", title = "Net funds")
+```
+
+Similar to the last plot, but this figure will track net funds in the long run. Zooming in will show the fluctuations of daily spending, whereas the general trend may be more indicative of how growth or the opposite. 
+
+``` {r echo = F, fig.cap = "Figure 9: Line graph of net funds to show short-run fluctuations and long-run trends. \\label{fig:iris}"}
+income_expenditure_cumsum <- income_expenditure %>%
+  unite(Date, Day, Month, Year, sep = "-")
+
+income_expenditure_cumsum$Date <- dmy(income_expenditure_cumsum$Date)
+
+income_expenditure_cumsum %>%
+  arrange(Date) %>%
+ggplot(aes(x = Date, y=cumsum(Net), group = 1)) + 
+  geom_point(size = 3, alpha = 0.75, colour = "aquamarine4") +
+  geom_line(size = 0.25, alpha = 0.5) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        plot.title = element_text(hjust = 0.5, size = 16),
+        text = element_text(size = 14, family = "Century Gothic"),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(colour = "#bdbdbd", linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = alpha("aquamarine4", 0.75))) +
+  labs(y = "Total $ (CAD)", title = "Tracking net funds")
+```
